@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  predictions   PredictionHistory[]
+  sharedPredictions SharedPrediction[]
+
+  @@map("users")
+}
+
+model PredictionHistory {
+  id        String    @id @default(cuid())
+  prompt    String
+  result    Json
+  userId    String
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sharedPredictions SharedPrediction[]
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("prediction_history")
+}
+
+model SharedPrediction {
+  id              String    @id @default(cuid())
+  title           String
+  predictionId    String
+  shareToken      String    @unique @default(cuid())
+  createdAt       DateTime  @default(now())
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId          String
+  prediction      PredictionHistory @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([shareToken])
+  @@map("shared_predictions")
+}
