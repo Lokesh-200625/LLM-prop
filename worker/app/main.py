@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from worker.app.api.router import router
 from worker.app.core.config import get_settings
 from worker.app.core.logger import configure_logging, get_logger
+from worker.app.core.model_downloader import ensure_model
 from worker.app.core.prediction_orchestrator import PredictionOrchestrator
 from worker.app.core.predictor_registry import PREDICTOR_REGISTRY
 from worker.app.registry import ModelRegistry
@@ -21,6 +22,9 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     logger.info("Starting model worker version=%s", settings.api_version)
     registry = ModelRegistry(settings)
+    from worker.app.core.model_downloader import ensure_model
+
+    ensure_model()
     registry.load_all()
     logger.info("Model status %s", registry.status())
     app.state.registry = registry

@@ -22,13 +22,19 @@ Predict the band gap (eV) of crystalline materials from plain-text descriptions 
 |   |-- styles/            CSS and shared types
 |-- worker/                Python model worker service
 |   |-- app/               FastAPI app, core logic, and services
-|   |-- models/            Saved model weights and tokenizer files
 |-- tests/                 Project tests and integration checks
 ```
 
-## Note
+## Model Storage
 
-This repository includes a separate Python worker service under `worker/` that serves model inference and health endpoints. The frontend proxy route at `src/app/api/predict/route.ts` forwards requests to the worker API and preserves backend metadata for prediction responses.
+**The model is no longer stored locally.** It is downloaded from Hugging Face on startup:
+
+- **Repository:** `ZahidHussain-1007/llm-prop-bandgap-model`
+- **Download:** Automatic via `worker/app/core/model_downloader.py`
+- **Cache Location:**
+  - **Local/Docker:** Uses HF default cache (`~/.cache/huggingface/` or `/root/.cache/huggingface/`)
+  - **Render:** `/app/.cache/huggingface` (persists across redeployments)
+  - **Configurable via:** `MODEL_CACHE_DIR` environment variable
 
 ## Quick Start on Windows
 
@@ -38,7 +44,7 @@ Double-click:
 start-app.bat
 ```
 
-The script creates `.venv`, installs Python dependencies from `requirements.txt`, installs npm dependencies when needed, starts the FastAPI backend on `http://127.0.0.1:8000`, starts Next.js on `http://localhost:3000`, and opens the app.
+The script creates `.venv`, installs dependencies, starts the FastAPI backend on `http://127.0.0.1:8000`, starts Next.js on `http://localhost:3000`, and opens the app.
 
 ## Prerequisites
 
@@ -48,14 +54,7 @@ The script creates `.venv`, installs Python dependencies from `requirements.txt`
 | Node.js | 18 or newer |
 | npm | Included with Node.js |
 | PostgreSQL | 12 or newer |
-
-The model files should exist at:
-
-```text
-models/
-  best_bandgap_model.pt
-  tokenizer/
-```
+| Hugging Face Account | Free tier (for token) |
 
 ## Database Setup
 
@@ -66,7 +65,8 @@ Before running the app, set up PostgreSQL and Prisma:
 cp .env.example .env.local
 
 # 2. Update DATABASE_URL in .env.local
-# DATABASE_URL="postgresql://user:password@localhost:5432/bandgap_ml"
+# For local: DATABASE_URL="postgresql://postgres:postgres@localhost:5432/llmprop"
+# For Neon: Copy connection string from Neon dashboard
 
 # 3. Install dependencies
 npm install
@@ -78,44 +78,41 @@ npx prisma migrate dev
 npx prisma studio
 ```
 
-For detailed setup instructions, see [DATABASE_SETUP.md](DATABASE_SETUP.md)
+For detailed local setup instructions, see [DATABASE_SETUP.md](DATABASE_SETUP.md)
 
 ## Environment Variables
 
 Create or update `.env.local` in the project root:
 
+```bash
+cp .env.example .env.local
+```
+
+Key variables (see `.env.example` for complete list with descriptions):
+
 ```env
 # Database
-DATABASE_URL=postgresql://user:password@localhost:5432/bandgap_ml
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/llmprop
 
-# NextAuth
+# Authentication (generate secret with: openssl rand -base64 32)
 NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-super-secret-random-string-here
+NEXTAUTH_SECRET=your-generated-secret
 
-# Google OAuth
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
+# Google OAuth (from Google Cloud Console)
+GOOGLE_CLIENT_ID=your_client_id
+GOOGLE_CLIENT_SECRET=your_client_secret
 
-# GitHub OAuth (optional, for future use)
-GITHUB_CLIENT_ID=your_github_client_id
-GITHUB_CLIENT_SECRET=your_github_client_secret
+# Hugging Face (optional for public repo, required for private)
+HF_TOKEN=
+
+# Backend
+WORKER_API_URL=http://localhost:8000
+WORKER_HOST=127.0.0.1
+WORKER_PORT=8000
+CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 ```
 
-For Google OAuth, add this redirect URI in Google Cloud Console:
-
-```text
-http://localhost:3000/api/auth/callback/google
-```
-
-Optional backend variables:
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `MODEL_PATH` | `models/best_bandgap_model.pt` | Path to model weights |
-| `TOKENIZER_DIR` | `models/tokenizer` | Path to tokenizer directory |
-| `MODEL_DEVICE` | auto | Force `cpu`, `cuda`, etc. |
-| `LOG_LEVEL` | `INFO` | Backend logging level |
-| `CORS_ORIGINS` | set by `start-app.bat` | Allowed frontend origins |
+For Google OAuth setup, see the [Architecture](#architecture) section below.
 
 ## Architecture
 
@@ -141,18 +138,98 @@ Optional backend variables:
 - **API:** FastAPI with CORS support
 - **Model:** Fine-tuned DistilRoBERTa
 - **Inference:** PyTorch
+- **Storage:** Models downloaded from Hugging Face on startup
 - **Integration:** JSON API with frontend
 
+## Production Deployment
 
-## Manual Backend Start
+Deploy the application to **Vercel** (frontend), **Render** (backend), and **Neon** (database).
+
+### Step 1: Database (Neon)
+
+1. Go to [neon.tech](https://neon.tech) and create an account
+2. Create a new project and database
+3. Copy the **connection string** (includes credentials and host)
+4. Save as `NEON_CONNECTION_STRING` for later use
+
+### Step 2: Backend (Render)
+
+1. Go to [render.com](https://render.com) and sign up
+2. Create a new **Web Service**
+3. Connect your GitHub repository
+4. Configure the service:
+   - **Name:** `bandgap-ml-worker`
+   - **Environment:** `Python 3.11`
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `uvicorn worker.app.main:app --host 0.0.0.0 --port 8000`
+   - **Plan:** Starter (free tier, CPU-only)
+
+5. Add environment variables:
+   ```
+   DATABASE_URL=<your-neon-connection-string>
+   WORKER_HOST=0.0.0.0
+   WORKER_PORT=8000
+   CORS_ORIGINS=https://<your-vercel-domain>.vercel.app
+   MODEL_CACHE_DIR=/app/.cache/huggingface
+   HF_TOKEN=<optional-huggingface-token>
+   LOG_LEVEL=INFO
+   MODEL_DEVICE=cpu
+   ```
+
+6. Deploy and note the URL (e.g., `https://bandgap-ml-worker.onrender.com`)
+
+### Step 3: Frontend (Vercel)
+
+1. Go to [vercel.com](https://vercel.com) and sign up
+2. Create a new project from your GitHub repository
+3. Configure build settings:
+   - **Framework:** `Next.js`
+   - **Build Command:** `npm run build`
+   - **Output Directory:** `.next`
+
+4. Add environment variables:
+   ```
+   DATABASE_URL=<your-neon-connection-string>
+   NEXTAUTH_URL=https://<your-vercel-domain>.vercel.app
+   NEXTAUTH_SECRET=<generate-with: openssl-rand-base64-32>
+   GOOGLE_CLIENT_ID=<from-google-cloud-console>
+   GOOGLE_CLIENT_SECRET=<from-google-cloud-console>
+   NEXT_PUBLIC_WORKER_API_URL=https://<your-render-backend-url>
+   ```
+
+5. Deploy
+
+### Google OAuth Setup (Required for Login)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or use an existing one
+3. Enable the Google+ API
+4. Create OAuth 2.0 credentials (Web application type)
+5. Add authorized redirect URIs:
+   - `http://localhost:3000/api/auth/callback/google` (local dev)
+   - `https://<your-vercel-domain>.vercel.app/api/auth/callback/google` (production)
+6. Copy the **Client ID** and **Client Secret**
+7. Add to both `.env.local` (local dev) and Vercel environment variables (production)
+
+
+## Manual Backend Start (Local Development)
 
 ```powershell
+# Create and activate virtual environment
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
+
+# Install Python dependencies
+pip install -r worker/requirements.txt
+
+# Set environment variables
 $env:CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000"
-python -m uvicorn server.app:app --host 127.0.0.1 --port 8000
+$env:WORKER_HOST="127.0.0.1"
+$env:WORKER_PORT="8000"
+
+# Start FastAPI backend (model downloads automatically on first startup)
+python -m uvicorn worker.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Health check:
@@ -160,6 +237,10 @@ Health check:
 ```powershell
 curl http://127.0.0.1:8000/health
 ```
+
+### Model Download
+
+The first startup will download the model from Hugging Face (≈1-2 GB). This happens automatically via `worker/app/core/model_downloader.py`. Subsequent startups use the cached model.
 
 ## Manual Frontend Start
 

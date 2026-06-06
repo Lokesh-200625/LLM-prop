@@ -24,11 +24,14 @@ services:
       - "8000:8000"
     environment:
       PYTHONUNBUFFERED: 1
+      HF_TOKEN: ${HF_TOKEN:-}
+      MODEL_CACHE_DIR: /app/.cache/huggingface
+      WORKER_HOST: 0.0.0.0
+      WORKER_PORT: 8000
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./worker/models:/app/worker/models
 
 volumes:
   postgres_data:
