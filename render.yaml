@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: llm-prop-worker
+    env: docker
+    plan: free
+    rootDir: worker
+    autoDeploy: true
+    envVars:
+      - key: CORS_ORIGINS
+        value: https://your-vercel-app.vercel.app
+      - key: BANDGAP_HF_REPO_ID
+        value: your-huggingface-username/llm-prop-bandgap
+      - key: BANDGAP_HF_REVISION
+        value: main

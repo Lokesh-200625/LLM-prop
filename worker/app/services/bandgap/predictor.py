@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import torch
+import numpy as np
 
 from worker.app.core.base_predictor import BasePredictor
 from worker.app.core.exceptions import PredictorInferenceError, PredictorLoadError, PredictorValidationError
@@ -23,7 +23,7 @@ class BandGapService(BasePredictor):
         self.bundle: ModelBundle | None = None
 
     @property
-    def device(self) -> torch.device | str:
+    def device(self) -> str:
         return self.bundle.device if self.bundle else "unloaded"
 
     def load_model(self) -> None:
@@ -70,7 +70,7 @@ class BandGapService(BasePredictor):
         try:
             encoding = self.bundle.tokenizer(
                 cleaned_text,
-                return_tensors="pt",
+                return_tensors="np",
                 truncation=True,
                 padding="max_length",
                 max_length=self.bundle.max_length,
@@ -78,16 +78,21 @@ class BandGapService(BasePredictor):
         except Exception as exc:
             raise PredictorInferenceError(f"Failed to tokenize input: {exc}") from exc
 
-        model_inputs = {key: value.to(self.bundle.device) for key, value in encoding.items()}
+        model_inputs = {
+            key: np.asarray(value, dtype=np.int64)
+            for key, value in encoding.items()
+            if key in self.bundle.input_names
+        }
+        if not model_inputs:
+            raise PredictorInferenceError("No compatible model inputs were produced by the tokenizer.")
 
         try:
-            with torch.no_grad():
-                prediction_tensor = self.bundle.model(**model_inputs)
+            outputs = self.bundle.model.run(None, model_inputs)
         except Exception as exc:
             raise PredictorInferenceError(f"Bandgap inference failed: {exc}") from exc
 
         try:
-            prediction = finite_prediction(float(prediction_tensor.item()))
+            prediction = finite_prediction(float(np.asarray(outputs[0]).reshape(-1)[0]))
         except Exception as exc:
             raise PredictorInferenceError(f"Invalid bandgap output: {exc}") from exc
 

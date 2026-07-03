@@ -27,8 +27,8 @@ class Settings(BaseModel):
     app_name: str = "LLM-Prop Model Worker"
     api_version: str = "2.0.0"
     log_level: str = Field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO").upper())
-    host: str = Field(default_factory=lambda: os.getenv("WORKER_HOST", "127.0.0.1"))
-    port: int = Field(default_factory=lambda: int(os.getenv("WORKER_PORT", "8000")))
+    host: str = Field(default_factory=lambda: os.getenv("HOST", os.getenv("WORKER_HOST", "0.0.0.0")))
+    port: int = Field(default_factory=lambda: int(os.getenv("PORT", os.getenv("WORKER_PORT", "8000"))))
     device: str | None = Field(default_factory=lambda: os.getenv("MODEL_DEVICE"))
     cors_origins: list[str] = Field(
         default_factory=lambda: _csv(
@@ -40,13 +40,22 @@ class Settings(BaseModel):
     )
     max_text_length: int = Field(default_factory=lambda: int(os.getenv("MAX_TEXT_LENGTH", "5000")))
 
+    bandgap_hf_repo_id: str | None = Field(default_factory=lambda: os.getenv("BANDGAP_HF_REPO_ID"))
+    bandgap_hf_revision: str = Field(default_factory=lambda: os.getenv("BANDGAP_HF_REVISION", "main"))
+    bandgap_hf_model_filename: str = Field(
+        default_factory=lambda: os.getenv("BANDGAP_HF_MODEL_FILENAME", "bandgapquantized.onnx")
+    )
+    bandgap_hf_tokenizer_dirname: str = Field(
+        default_factory=lambda: os.getenv("BANDGAP_HF_TOKENIZER_DIRNAME", "tokenizer")
+    )
+
     bandgap: ModelConfig = Field(
         default_factory=lambda: ModelConfig(
             name="bandgap",
             model_path=Path(
                 os.getenv(
                     "BANDGAP_MODEL_PATH",
-                    str(WORKER_ROOT / "models" / "band_gap" / "best_bandgap_model.pt"),
+                    str(WORKER_ROOT / "models" / "band_gap" / "bandgapquantized.onnx"),
                 )
             ),
             tokenizer_dir=Path(
