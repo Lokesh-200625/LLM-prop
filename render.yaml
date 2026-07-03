@@ -1,14 +1,62 @@
+# render.yaml — Render deployment specification for the Python worker.
+#
+# Deploy steps:
+#   1. Push this repo to GitHub / GitLab.
+#   2. Create a new "Web Service" on Render and connect the repo.
+#   3. Set the environment variables listed below in the Render dashboard
+#      (or add them as envVars with `sync: false` entries here).
+#   4. Deploy.
+#
+# NOTE: The Next.js frontend is deployed separately on Vercel.
+#       After deploying this service, copy its public URL
+#       (e.g. https://llm-prop-worker.onrender.com) into
+#       the WORKER_API_URL env var of your Vercel project.
+
 services:
   - type: web
     name: llm-prop-worker
     env: docker
+    # Upgrade to a paid plan to get persistent disk and avoid cold-start downloads.
     plan: free
     rootDir: worker
     autoDeploy: true
     envVars:
+      # --- CORS ---
+      # Required: set to your Vercel frontend URL (no trailing slash).
+      # Example: https://llm-prop.vercel.app
       - key: CORS_ORIGINS
-        value: https://your-vercel-app.vercel.app
+        sync: false          # Set this in the Render dashboard
+
+      # --- Hugging Face model source ---
+      # Required: the HuggingFace repo that contains bandgapquantized.onnx + tokenizer/.
+      # Example: your-hf-username/llm-prop-bandgap
       - key: BANDGAP_HF_REPO_ID
-        value: your-huggingface-username/llm-prop-bandgap
+        sync: false          # Set this in the Render dashboard
+
+      # Optional: defaults to "main"
       - key: BANDGAP_HF_REVISION
         value: main
+
+      # Optional: defaults to "bandgapquantized.onnx"
+      - key: BANDGAP_HF_MODEL_FILENAME
+        value: bandgapquantized.onnx
+
+      # Optional: defaults to "tokenizer"
+      - key: BANDGAP_HF_TOKENIZER_DIRNAME
+        value: tokenizer
+
+      # --- Hugging Face auth ---
+      # Required only if the HF repo is private.
+      # - key: HF_TOKEN
+      #   sync: false
+
+      # --- Model cache ---
+      # Recommended: persist downloaded models across deploys (requires Render Disk).
+      # - key: MODEL_CACHE_DIR
+      #   value: /data/models
+
+      # --- Worker tuning ---
+      - key: LOG_LEVEL
+        value: INFO
+      - key: MAX_TEXT_LENGTH
+        value: "5000"

@@ -1,4 +1,4 @@
-﻿# Node / Next.js
+# Node / Next.js
 node_modules/
 .next/
 out/
@@ -37,6 +37,7 @@ venv/
 .venv/
 env/
 .env*
+!.env.example
 
 # Docker / container artifacts
 docker-compose.override.yml
